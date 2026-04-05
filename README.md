@@ -1,496 +1,216 @@
-# CLU — Technical Architecture
-**AI Agent Accountability Protocol**
-*v0.3 · 2026 · Built on Solana · Arweave Storage · x402 Payments*
+# CLU — AI Agent Accountability Protocol
 
-> CLU makes AI agent failure expensive — automatically, permanently, and without a central authority — by combining economic staking, automatic slashing, and on-chain reputation into a single composable protocol on Solana.
+> **CLU makes AI agent failure expensive — automatically, permanently, and without a central authority.**
+>
+> By combining economic staking, automatic slashing, on-chain reputation, and a skills-first developer experience, CLU is the trust layer the Solana agent ecosystem is missing.
+
+**Built on:** Solana · **Storage:** Arweave · **Payments:** x402 · **Developer surface:** Solana Agent Skills
 
 ---
 
 ## Table of Contents
 
 1. [The Problem](#1-the-problem)
-2. [How CLU Fits the Landscape](#2-how-clu-fits-the-landscape)
-3. [Who Can Register an Agent](#3-who-can-register-an-agent)
-4. [Agent Ownership Verification](#4-agent-ownership-verification)
-5. [Capability Hash and Predefined Templates](#5-capability-hash-and-predefined-templates)
-6. [The Execution Receipt and output_hash](#6-the-execution-receipt-and-output_hash)
-7. [x402 Payments and Agent Accountability](#7-x402-payments-and-agent-accountability)
-8. [The Two-Pool System](#8-the-two-pool-system)
-9. [On-Chain Programs](#9-on-chain-programs)
-10. [Attestation: Two Paths](#10-attestation-two-paths)
-11. [Core Protocol Flows](#11-core-protocol-flows)
-12. [The Peer-Validation Consensus Layer](#12-the-peer-validation-consensus-layer)
-13. [The Slashing System](#13-the-slashing-system)
-14. [x402-Gated Registry Access](#14-x402-gated-registry-access)
-15. [Arweave Storage Integration](#15-arweave-storage-integration)
-16. [Off-Chain Components](#16-off-chain-components)
-17. [Full Deployment Map](#17-full-deployment-map)
-18. [Token Decision](#18-token-decision)
-19. [Open Problems](#19-open-problems)
-20. [Hackathon Demo Scenario](#20-hackathon-demo-scenario)
-21. [Build Plan](#21-build-plan)
+2. [The Insight — Skills Have No Trust Layer](#2-the-insight)
+3. [What CLU Is](#3-what-clu-is)
+4. [Architecture Overview](#4-architecture-overview)
+5. [The Skills Layer — Build Time](#5-the-skills-layer)
+6. [On-Chain Programs](#6-on-chain-programs)
+7. [The Two-Pool System](#7-the-two-pool-system)
+8. [Task Lifecycle and Execution Receipts](#8-task-lifecycle-and-execution-receipts)
+9. [Attestation — Two Paths](#9-attestation)
+10. [The Slashing System](#10-the-slashing-system)
+11. [x402-Gated Registry API](#11-x402-gated-registry-api)
+12. [Arweave Storage Integration](#12-arweave-storage-integration)
+13. [User Journeys](#13-user-journeys)
+14. [Off-Chain Components](#14-off-chain-components)
+15. [Capability Templates](#15-capability-templates)
+16. [Token Decision](#16-token-decision)
+17. [Known Open Problems](#17-known-open-problems)
+18. [Build Plan](#18-build-plan)
 
 ---
 
 ## 1. The Problem
 
-AI agents on Solana are already managing real money — executing trades, managing liquidity pools, calling APIs, handling hundreds of thousands of dollars with minimal human oversight. x402 is enabling machine-to-machine payments at scale.
+AI agents on Solana are already managing real money — executing trades, managing liquidity pools, calling APIs — with minimal human oversight. x402 is enabling machine-to-machine payments at scale.
 
-But there is no trust infrastructure. When an agent manages a $500k liquidity pool and something goes wrong — who is accountable? How does a DeFi protocol decide whether to trust an agent it has never worked with?
+But there is no trust infrastructure. When an agent manages a $500k liquidity pool and something goes wrong, who is accountable? How does a DeFi protocol decide whether to trust an agent it has never interacted with?
 
 | Existing approach | What breaks |
 |---|---|
-| Centralized reputation systems | Gameable, not portable, controlled by a single party |
+| Centralized reputation systems | Gameable, not portable, controlled by one party |
 | API key access control | No behavioral history — a new key wipes the slate |
-| Manual audits | Doesn't scale to thousands of agents executing millions of tasks |
+| Manual audits | Does not scale to thousands of agents executing millions of tasks |
 | Staking without slashing | Sybil-friendly — bad actors spin up new identities after each failure |
 
-CLU addresses all of these through one core idea: make failure expensive, automatically, with no one in charge of deciding.
+CLU addresses all of these through one core idea: **make failure expensive, automatically, with no one in charge of deciding.**
 
 ---
 
-## 2. How CLU Fits the Landscape
+## 2. The Insight — Skills Have No Trust Layer
 
-| Protocol | What it does well | What's missing |
-|---|---|---|
-| SAID Protocol | On-chain identity, reputation, public agent directory | No staking or slashing — reputation is attestation-only |
-| SATI | ERC-8004 compliant identity, proof-of-participation | No fund pool, no peer-validation consensus |
-| Solana Agent Registry (official) | Foundation-backed identity + reputation + third-party verification | No challenger mechanism, no slashing |
-| Blueprint Agentic Staking | Native staking infra for AI agents, ~6% APY | Focused on yield, not accountability — no slash, no reputation history |
-| CYNIC | 11-agent Proof of Judgment on Solana | Closed agent set — other operators cannot register into it |
+Solana's Agent Skills ecosystem (`solana.com/skills`) gives AI coding agents pre-built capability modules. Jupiter has a skill. Kamino has a skill. Raydium, Orca, Meteora — all have skills. Each one tells an agent *how* to interact with a protocol.
 
-**What CLU adds that no existing protocol has assembled:**
-- Two-pool architecture separating reputation tracking from fund management
-- Automatic on-chain slashing for provable failures — no humans in the loop
-- `verify_agent()` — a single CPI call any Solana program can make to check an agent
-- x402-gated registry API — protocol earns revenue on every lookup
-- Permanent reputation history anchored to Arweave, CID stored on-chain
-- Predefined capability templates — standardized, machine-verifiable agent behavior declarations
+Not one of them answers: **should I trust the agent doing the interacting?**
+
+```
+Skills ecosystem today:
+
+  Jupiter Skill    →  teaches agent HOW to swap
+  Kamino Skill     →  teaches agent HOW to lend
+  Raydium Skill    →  teaches agent HOW to provide liquidity
+
+  CLU Skill        →  answers WHETHER to trust the agent doing all of the above
+```
+
+Skills are the **capability layer**. CLU is the **trust layer** that sits beneath every skill. They are not competing — they operate at different times in the agent lifecycle.
+
+```
+BUILD TIME                         RUNTIME
+──────────────────                 ──────────────────────────
+Developer + Claude Code            Agent executing autonomously
+reads SKILL.md                     signs transactions
+writes integration code            manages real money
+tests on devnet                    no human in the loop
+
+← Skills live here →               ← CLU lives here →
+```
+
+This means CLU can reach developers through the Skills ecosystem itself — before any protocol integration is needed, before any frontend is built. When a developer installs the CLU skill and asks Claude Code to "build a Jupiter trading agent," the generated code automatically includes execution receipts, output hash signing, and pre-execution trust guards. The accountability is injected at build time.
 
 ---
 
-## 3. Who Can Register an Agent
+## 3. What CLU Is
 
-**Any agent built anywhere can register on CLU.** CLU is accountability infrastructure, not an agent framework. It does not care how an agent was built, what language it runs in, or what platform it lives on. It only tracks the on-chain record of what the agent does.
+CLU is a four-layer protocol:
 
-The agent just needs a **Solana keypair**. Everything else — the code, runtime, framework — is invisible to CLU.
+**Layer 1 — Skills (build time).** A set of `SKILL.md` files that developers install into Claude Code via `npx skills add clu-protocol/skills`. These inject CLU accountability patterns — execution receipt generation, output hash signing, `verify_agent()` guards — into any agent Claude Code generates. Developers do not write CLU code themselves; Claude Code writes it for them.
 
-```
-An agent built with ElizaOS, Rig, custom Rust, Python, or anything else
-can register on CLU. The operator runs:
+**Layer 2 — Off-chain services (runtime).** An auto-attestation watcher that monitors on-chain agent activity and submits reputation updates automatically. An indexer that parses program events into a queryable database. An x402-gated API that sells structured registry access for 0.001 USDC per lookup.
 
-  clu register --agent-id <agent_solana_pubkey> --capability-hash <hash>
-  clu stake    --agent-id <agent_solana_pubkey> --amount 5000
+**Layer 3 — On-chain programs (trust source of truth).** Three Anchor programs on Solana that store agent identity, manage staked funds, and execute slashes with no human in the loop. These are the immutable, composable foundation everything else builds on.
 
-The agent's code does not change at all.
-```
-
-**The three parties:**
-
-```
-OPERATOR                    AGENT                       HIRING PROTOCOL
-Built CLU or not            Built anywhere              Any Solana program
-                            Runs anywhere
-Registers agent             Executes tasks              Calls verify_agent()
-Stakes USDC                 Signs task outputs          before trusting an agent
-Withdraws rewards           Solana keypair is the
-                            only CLU requirement
-```
-
-CLU records everything on-chain, permanently. The operator is accountable for what they register.
+**Layer 4 — Consumers.** DeFi protocols calling `verify_agent()` via CPI before granting pool access. Traders hiring agents through the task queue. Community stakers backing agents they trust and earning proportional rewards.
 
 ---
 
-## 4. Agent Ownership Verification
+## 4. Architecture Overview
 
-### The Problem
-
-If any Solana pubkey can be registered as an agent, what prevents someone from registering an agent they don't own? A malicious actor could register a legitimate agent's address before the real operator does, pollute its reputation record, or manufacture slash scenarios against it.
-
-### The Fix: Dual Signature on Registration
-
-Registration requires **two signers**: the operator and the agent itself. In Anchor, the agent account is declared as `Signer<'info>`. Solana's runtime enforces at the VM level that the agent keypair signed the transaction. This cannot be faked — the transaction is rejected unless the private key was used.
-
-```rust
-#[derive(Accounts)]
-pub struct RegisterAgent<'info> {
-    #[account(mut)]
-    pub operator: Signer<'info>,    // pays fees, controls Fund PDA
-
-    pub agent: Signer<'info>,       // must co-sign — cryptographic proof
-                                    // that operator controls this keypair
-
-    #[account(
-        init,
-        seeds = [b"agent_registry", agent.key().as_ref()],
-        bump,
-        payer = operator,
-        space = 8 + ReputationRecord::SIZE,
-    )]
-    pub registry_pda: Account<'info, ReputationRecord>,
-
-    pub system_program: Program<'info, System>,
-}
 ```
-
-No application-level check needed. Solana's own transaction verification handles it.
-
-### What the Dual Signature Covers
-
-| Scenario | Protected? | Why |
-|---|---|---|
-| Registering an agent you don't control | Yes | Agent must co-sign — impossible without private key |
-| Registering a fake agent with a fresh keypair | No — but irrelevant | Reputation starts at 0, stake is your own money — only hurts yourself |
-| Two operators registering the same agent | Structurally impossible | PDA is seeded by agent pubkey — only one Registry PDA can exist per agent |
-| Operator lying about capability_hash | Partial | Hash is immutable on-chain — acting outside declared capabilities is a valid slash ground |
-
-### Task Output Signing
-
-Registration proves the operator controls the agent keypair. Task output signing proves the agent actually performed the work it is being attested for.
-
-When an agent completes a task, it signs a hash of the execution receipt with its keypair. The hiring protocol includes that signature when submitting attestation.
-
-```rust
-pub fn submit_attestation(
-    ctx: Context<SubmitAttestation>,
-    task_id: [u8; 32],
-    output_hash: [u8; 32],
-    agent_signature: [u8; 64],  // agent signed sha256(task_id || output_hash)
-    score: u8,
-    stake_weight: u64,
-) -> Result<()> {
-    let agent_pubkey = ctx.accounts.registry_pda.agent_id;
-    let message = sha256([task_id, output_hash].concat());
-    require!(
-        ed25519_verify(&agent_signature, &message, &agent_pubkey),
-        CluError::InvalidAgentSignature
-    );
-    // proceed with reputation update
-}
+┌─────────────────────────────────────────────────────────────┐
+│  SKILLS LAYER — build time                                  │
+│                                                             │
+│  clu-register   clu-wrap-jupiter   clu-wrap-kamino          │
+│  clu-wrap-raydium   clu-wrap-orca   clu-verify              │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ inject accountability at codegen
+┌───────────────────────▼─────────────────────────────────────┐
+│  OFF-CHAIN SERVICES — runtime                               │
+│                                                             │
+│  Auto-attestation watcher   Indexer (SQLite→PG)             │
+│  x402 API server            Arweave uploader                │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ submits on-chain txs
+┌───────────────────────▼─────────────────────────────────────┐
+│  ON-CHAIN PROGRAMS — Solana                                 │
+│                                                             │
+│  clu_registry          clu_fund          clu_adjudication   │
+│  (identity/rep)        (money)           (slashing)         │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ CPI / read
+┌───────────────────────▼─────────────────────────────────────┐
+│  CONSUMERS                                                  │
+│                                                             │
+│  DeFi protocols    Traders / users    Community stakers     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. Capability Hash and Predefined Templates
+## 5. The Skills Layer
 
-### What the Capability Hash Is
+### What a CLU skill is
 
-`capability_hash = sha256(capability_manifest_json)`
+A CLU skill is a `SKILL.md` file with YAML frontmatter, following the open Agent Skills specification. When installed into Claude Code, it loads into the agent's context and changes the code Claude generates for any matching task.
 
-The manifest is a structured JSON document declaring the agent's operational boundaries. The manifest itself is stored on Arweave at registration time. The hash is what goes on-chain — small, fixed size, immutable forever.
-
-```
-capability_hash   =   fingerprint of what the agent DECLARES it can do
-                      set once at registration, immutable
-                      declares allowed programs, instructions, token limits
+```bash
+npx skills add clu-protocol/skills
 ```
 
-### Predefined Template Library
+This installs six skills:
 
-Instead of operators writing manifests from scratch, CLU ships a library of standard templates. Operators drag templates into a builder UI, set constraint overrides, and the frontend computes the merged manifest and hash automatically.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Template Library              Agent Capability Builder   │
-│                                                           │
-│  ┌──────────────┐              ┌─────────────────────┐   │
-│  │ DEX_TRADER   │──── drag ───▶│ DEX_TRADER_V1       │   │
-│  │    V1        │              │   max_usdc: [50000]  │   │
-│  └──────────────┘              │   ✎ override         │   │
-│                                │                     │   │
-│  ┌──────────────┐              │ ORACLE_READER_V1    │   │
-│  │ORACLE_READER │──── drag ───▶│   (read-only)       │   │
-│  │    V1        │              └─────────────────────┘   │
-│  └──────────────┘                         │              │
-│                               capability_hash: 0x8f3a... │
-│                               [Register Agent]            │
-└──────────────────────────────────────────────────────────┘
-```
-
-**Standard templates:**
-
-| Template | What it unlocks |
+| Skill | What it does |
 |---|---|
-| `DEX_TRADER_V1` | Raydium, Orca, Jupiter swaps |
-| `LP_MANAGER_V1` | Add/remove liquidity on major Solana AMMs |
-| `ORACLE_READER_V1` | Read Pyth + Switchboard price feeds (read-only) |
-| `TOKEN_TRANSFER_V1` | Send/receive bounded USDC/SOL transfers |
-| `YIELD_OPTIMIZER_V1` | Deposit/withdraw from yield vaults (Kamino, Drift) |
-| `GOVERNANCE_VOTER_V1` | Vote on Realms governance proposals |
-| `PORTFOLIO_MGMT_V1` | Rebalance across whitelisted tokens |
-| `NFT_TRADER_V1` | Buy/list on Tensor, Magic Eden |
-| `DATA_LABELER_V1` | Off-chain task execution, on-chain attestation only |
+| `clu-register` | Walks operator through full registration in natural language |
+| `clu-core` | Core CLU primitives, error patterns, cross-cutting wrappers |
+| `clu-wrap-jupiter` | Jupiter skill + execution receipt + output_hash generation |
+| `clu-wrap-kamino` | Kamino skill + execution receipt + output_hash generation |
+| `clu-wrap-raydium` | Raydium skill + execution receipt + output_hash generation |
+| `clu-verify` | `verify_agent()` CPI patterns for DeFi protocol integration |
 
-**What a template looks like:**
+### How the `clu-register` skill works
 
-```json
-{
-  "template_id": "DEX_TRADER_V1",
-  "version": "1.0.0",
-  "description": "Executes token swaps on major Solana DEXes",
-  "allowed_programs": [
-    "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
-    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3sBjvsm",
-    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
-  ],
-  "allowed_instructions": ["swap", "route_swap", "exact_out_swap"],
-  "constraints": {
-    "max_single_transfer_usdc": 50000,
-    "allowed_token_mints": [
-      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      "So11111111111111111111111111111111111111112"
-    ],
-    "max_slippage_bps": 100
-  }
+When a developer types "set up CLU for my trading agent" in Claude Code, the `clu-register` skill activates and Claude Code walks through the entire onboarding:
+
+```
+Developer: "Set up CLU for my trading agent"
+
+Claude Code (with clu-register skill):
+  "I'll register your agent with CLU. A few questions:
+
+  1. What is your agent's Solana keypair public key?
+  2. I see you have the Jupiter and Kamino skills installed —
+     I'll suggest DEX_TRADER_V1 and YIELD_OPTIMIZER_V1 templates.
+     Does that match what this agent does?
+  3. How much USDC do you want to stake? Minimum is 100 USDC.
+
+  Ready? I'll generate the dual-signature registration transaction now."
+```
+
+The capability manifest is generated, uploaded to Arweave, and the `register_agent()` transaction is constructed and signed — all inside Claude Code with no separate frontend required.
+
+### How wrapped DeFi skills work
+
+A wrapped skill is the original protocol skill with CLU accountability injected on top. When Claude Code generates a Jupiter swap using the `clu-wrap-jupiter` skill, it automatically wraps the execution in three patterns:
+
+```typescript
+async function executeSwap(params: SwapParams): Promise<string> {
+  // CLU Pattern 1: Trust guard — verify agent before execution
+  return withCluGuard(AGENT_PUBKEY, 5000, () =>
+
+    // CLU Pattern 2: Deadline guard — halt if deadline too close
+    withDeadline(params.deadlineUnix, () =>
+
+      // CLU Pattern 3: Receipt wrapper — generate output_hash after execution
+      withCluReceipt(params.taskId, async () => {
+
+        // Standard Jupiter swap — unchanged from integrating-jupiter skill
+        const order = await jupiterFetch('/swap/v2/order', { /* params */ });
+        const sig = await signAndSend(order.transaction, agentWallet, connection);
+
+        return {
+          result: sig,
+          txSigs: [sig],
+          programs: ['JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4']
+        };
+      })
+    )
+  );
 }
 ```
 
-### How Templates Enable Faster Auto-Adjudication
-
-Each standard template hash is pre-registered on-chain in a `TemplateRegistry` PDA at protocol deployment. When `auto_adjudicate()` processes an `OutOfScopeCall` challenge, it checks whether the agent's `capability_hash` matches a known template:
-
-```rust
-// Inside auto_adjudicate()
-if let Some(template) = template_registry.get(&agent.capability_hash) {
-    // Known template — validate proof inline, no Arweave fetch needed
-    verify_against_template(proof_data, template)
-} else {
-    // Custom manifest — require Arweave CID in proof_data
-    verify_against_custom_manifest(proof_data)
-}
-```
-
-Standard template agents resolve `OutOfScopeCall` slashes entirely on-chain. Custom manifest agents require an Arweave fetch in the proof. Most agents will use standard templates, so most objective slashes resolve with no off-chain dependency.
-
-### Registration Flow With Templates
-
-```
-Operator selects templates in UI + sets constraint overrides
-     │
-     ▼
-Frontend merges templates into single manifest JSON
-     │
-     ▼
-Upload manifest to Arweave → get txid
-     │
-     ▼
-capability_hash = sha256(manifest_json)  [computed locally]
-     │
-     ▼
-register_agent(agent_pubkey, capability_hash)
-← both operator + agent must sign this transaction
-     │
-     ▼
-Registry PDA stores hash on-chain, permanently immutable
-Anyone can retrieve manifest from Arweave and verify hash matches
-```
-
-If an agent's capabilities need to change — register a new agent with a new manifest. The old record stays permanently.
+The developer did not write any of this CLU code. Claude Code generated it because the skill was installed. The agent is pre-instrumented before it ever runs a transaction.
 
 ---
 
-## 6. The Execution Receipt and output_hash
+## 6. On-Chain Programs
 
-### The Three Concepts Compared
-
-```
-Solana tx signature    Generated by Solana runtime
-                       Identifies one specific transaction on-chain
-                       64 bytes, base58 encoded
-                       You cannot control what this is
-
-Ethereum tx receipt    Generated by EVM after execution
-                       Contains status, gas used, logs, events
-                       Auto-generated by the blockchain
-
-CLU output_hash        Generated by the AGENT itself
-                       sha256 of a JSON document the agent constructs
-                       Summarizes what happened across a full task
-                       Agent signs it to explicitly accept accountability
-                       You control exactly what goes into it
-```
-
-**Key distinction:** Solana tx signature and Ethereum receipt are generated by the blockchain. `output_hash` is generated by the agent — it is the agent's own accountability statement, referencing the blockchain's records.
-
-### Why output_hash Cannot Be Replaced by Solana Tx Signature
-
-| Gap | Why tx signature doesn't cover it |
-|---|---|
-| Multi-transaction tasks | One task often spans 3–10 txs — which tx signature represents the task? |
-| Explicit responsibility | Agent signing output_hash is a deliberate accountability statement, not a side effect of being the fee payer |
-| Off-chain tasks | A data labeling agent produces no Solana transactions — output_hash is the only accountability record |
-| Capability verification | The receipt's `programs_called` field maps directly to the capability manifest for OutOfScopeCall verification |
-
-### The Execution Receipt Structure
-
-```json
-{
-  "schema_version": "1.0",
-  "task_id": "7f3a9c...",
-  "agent_id": "AgentPubkeyBase58...",
-  "operator": "OperatorPubkeyBase58...",
-  "hiring_protocol": "ProtocolProgramIdBase58...",
-  "timestamp_unix": 1743724800,
-
-  "execution": {
-    "tx_signatures": [
-      "5Kj8xVmN3...",
-      "9xQeWvG81..."
-    ],
-    "programs_called": [
-      "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
-      "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3sBjvsm"
-    ],
-    "instructions_executed": ["swap", "get_price"],
-    "token_transfers": [
-      { "mint": "EPjFWdd5...", "amount": 1000000, "direction": "out" },
-      { "mint": "So111111...", "amount": 5230000, "direction": "in"  }
-    ]
-  },
-
-  "result": {
-    "status": "success",
-    "summary": "Swapped 1 USDC for 0.00523 SOL at 191.2 USDC/SOL"
-  }
-}
-```
-
-```
-output_hash = sha256(canonical JSON above, keys sorted alphabetically)
-agent_signature = sign(output_hash, agent_private_key)
-```
-
-### Why Each Field Exists
-
-| Field | Purpose in protocol |
-|---|---|
-| `task_id` | Links output to the specific task assigned by hiring protocol |
-| `tx_signatures` | Challenger looks these up on Solana to verify what actually happened |
-| `programs_called` | Compared against `allowed_programs` in capability manifest for `OutOfScopeCall` |
-| `instructions_executed` | Compared against `allowed_instructions` in manifest |
-| `token_transfers` | Compared against `max_single_transfer_usdc` and `allowed_token_mints` constraints |
-| `timestamp_unix` | Used for `MissedDeadline` slash — was this submitted before deadline? |
-
-### Analogy
-
-```
-Solana tx signature    =    ATM receipt from the machine
-                             proves the transaction happened
-                             generated by the bank
-
-output_hash            =    Expense report your accountant files
-                             references the ATM receipts (tx_signatures)
-                             adds context: what was it for, who authorized it
-                             signed by the person taking accountability
-```
-
-### Independent Verifiability
-
-Anyone can verify an output_hash claim in five steps:
-
-```
-1. Retrieve execution receipt from Arweave using arweave_cid
-2. sha256(receipt_json) == output_hash on Registry PDA?   ← receipt is authentic
-3. ed25519_verify(agent_signature, output_hash, agent_pubkey)?  ← agent signed it
-4. Look up tx_signatures on Solana RPC  ← did these transactions actually happen?
-5. programs_called in receipt match actual tx instructions?  ← agent reported honestly
-```
-
-A challenger walks all five steps to build a slash proof. A hiring protocol walks steps 1–4 to trust an agent's work. The Solana tx signatures are ground truth — output_hash is the structured reference to them.
-
----
-
-## 7. x402 Payments and Agent Accountability
-
-### The Interaction
-
-In x402-enabled agentic flows, agents have their own autonomous wallets and sign their own payment transactions. This changes the accountability picture compared to traditional setups:
-
-```
-Traditional setup:
-  Operator keypair signs task execution transactions
-  → tx signature proves operator, not agent
-  → agent accountability is indirect
-
-x402 setup:
-  Agent has its own autonomous wallet
-  Agent signs its own payment transactions
-  Agent IS the fee payer for services it consumes
-  → tx signature directly proves agent identity for payment actions
-```
-
-When an agent makes x402 payments, it necessarily has its own keypair and signs its own transactions. So in x402 context, the tx signature does carry agent accountability — for payment transactions specifically.
-
-### What x402 Proves vs What output_hash Proves
-
-```
-x402 payment tx signature   →   proves agent identity and that it
-                                consumed a specific service at a point in time
-
-output_hash + agent_sig     →   proves agent identity AND that it explicitly
-                                accepts responsibility for a specific task outcome
-```
-
-x402 proves **"this agent paid for X"** — not **"this agent produced output Y and takes responsibility for it."** Both are needed for the full accountability picture.
-
-### The Positive Synergy
-
-x402 and CLU strengthen each other:
-
-```
-x402 payment history    →   proves agent was autonomously active,
-                            consuming services, operating independently
-
-CLU output_hash         →   proves agent accepts responsibility for
-                            specific task outcomes
-
-Combined                →   complete accountability picture:
-                            what the agent consumed + what it produced
-                            + explicit responsibility acceptance
-```
-
-**CLU's auto-attestation watcher uses x402 payment events as supporting evidence.** If an agent paid for a Pyth price feed at timestamp T and executed a swap at timestamp T+2, the payment proves the agent had the data it claimed to have used. This strengthens slash defense and attestation quality.
-
-### Three-Signature Accountability Model
-
-In a fully x402-enabled flow:
-
-```
-x402 payment tx signed by agent keypair      ← proves agent identity and autonomy
-task execution tx signed by agent keypair    ← proves agent executed the work
-output_hash signed by agent keypair          ← proves agent accepts responsibility
-
-Three independent signatures from the same keypair = strong proof that one
-autonomous agent was responsible for the full task lifecycle
-```
-
-This is a stronger accountability picture than any competing protocol provides — CLU + x402 create a chain of evidence from payment through execution through outcome, all signed by the same agent keypair.
-
----
-
-## 8. The Two-Pool System
-
-Every other agent registry conflates identity, reputation, and funds into a single account. CLU separates them into two distinct Solana PDAs with different access patterns and lifecycles.
-
-|  | Agent Registry Pool | Agentic Fund Pool |
-|---|---|---|
-| Maps | `agent_id → ReputationRecord` | `(operator, agent_id) → FundAccount` |
-| Type | One PDA per agent | One PDA per (operator, agent) pair |
-| Access pattern | Read-heavy — queried constantly by external protocols | Write-heavy — touched only during stake, slash, rewards |
-| Fields | `reputation_score`, `capability_hash`, `slash_count`, `arweave_cid` | `locked_stake`, `validator_stake`, `claimable_rewards`, `challenger_bond_pending` |
-| Who writes | Only CLU program after attestation or slash | Operator (deposit/withdraw), CLU program (slash/rewards) |
-
-**Why split them?** Reputation reads and fund writes have different access patterns. Separating them eliminates contention. Multiple stakers can also back a single agent without controlling its identity.
-
----
-
-## 9. On-Chain Programs
-
-CLU deploys three Anchor programs on Solana. All token operations use USDC (SPL token).
+CLU deploys three Anchor programs on Solana. All token operations use USDC (SPL token, 6 decimals).
 
 ### Program 1: `clu_registry`
 
-**Registry PDA** — one per agent
+Stores agent identity and reputation. One **Registry PDA** per agent.
 
 ```rust
 // seeds: ["agent_registry", agent.key()]
@@ -499,85 +219,108 @@ pub struct ReputationRecord {
     pub operator:           Pubkey,    // who registered it
     pub capability_hash:    [u8; 32],  // SHA256 of capability manifest — immutable
     pub reputation_score:   u64,       // 0–10000 (represents 0–100.00%)
-    pub slash_count:        u8,        // permanent — never decrements
+    pub slash_count:        u8,        // permanent, never decrements
     pub total_attestations: u64,
     pub total_tasks:        u64,
-    pub arweave_cid:        String,    // max 100 chars — Arweave txid
+    pub arweave_cid:        String,    // Arweave txid — pointer to full history
     pub registered_at:      i64,
     pub last_updated:       i64,
     pub bump:               u8,
 }
 ```
 
-**Instructions:**
+**Key instructions:**
 
 `register_agent(capability_hash)`
-- Requires both `operator` and `agent` as `Signer` — dual signature
-- Creates Registry PDA + Fund PDA
-- `reputation_score = 0` — cannot buy reputation
-- `capability_hash` immutable after this
-- Emits: `AgentRegistered { agent_id, operator, timestamp }`
+- Requires both `operator` and `agent` as `Signer` — dual signature enforced at VM level
+- Creates Registry PDA and Fund PDA atomically
+- `reputation_score = 0` at creation — reputation cannot be purchased
+- `capability_hash` is immutable after this point
+- Uploads capability manifest to Arweave, anchors CID on-chain
 
 `submit_attestation(task_id, output_hash, agent_signature, score, stake_weight)`
-- Verifies `ed25519_verify(agent_signature, sha256(task_id || output_hash), agent_pubkey)`
-- Reputation contribution = `(stake_weight * score) / max_stake`
-- Prevents reputation farming — points scale with stake at risk
-- Emits: `AttestationSubmitted { agent_id, score, new_reputation }`
+- Verifies `ed25519_verify(agent_signature, sha256(task_id || output_hash), agent_pubkey)` on-chain
+- Reputation contribution = `(stake_weight × score) / max_stake`
+- Prevents reputation farming — points scale with economic stake at risk
 
 `verify_agent(agent_id, min_reputation, min_stake) → (bool, ReputationRecord)`
-- CPI-callable by any external Solana program
+- CPI-callable by any Solana program in a single instruction
 - Returns `true` if `reputation_score >= min_reputation AND locked_stake >= min_stake`
-- This is the composability primitive — the most important instruction in the protocol
+- This is the composability primitive — the single most important instruction
 
 `write_arweave_cid(agent_id, cid)`
-- Authority: winning validator (after validation round) or CLU program (after slash)
-- Updates `arweave_cid` in Registry PDA
+- Updates the Arweave pointer after a slash event or validation round finalizes
 
 ---
 
 ### Program 2: `clu_fund`
 
-**Fund PDA** — one per (operator, agent) pair
+Manages staked funds. One **Fund PDA** per (operator, agent) pair. One **StakerPosition PDA** per (fund_account, staker) pair.
 
 ```rust
 // seeds: ["fund_account", operator.key(), agent_id.key()]
 pub struct FundAccount {
-    pub operator:                Pubkey,
-    pub agent_id:                Pubkey,
-    pub locked_stake:            u64,   // USDC (6 decimals) — what gets slashed
-    pub validator_stake:         u64,   // locked when participating as validator
-    pub claimable_rewards:       u64,
-    pub challenger_bond_pending: u64,
-    pub stake_token_mint:        Pubkey, // USDC mint
-    pub bump:                    u8,
+    pub operator:            Pubkey,
+    pub agent_id:            Pubkey,
+    pub validator:           Pubkey,
+    pub total_locked_stake:  u64,   // sum of all staker positions
+    pub validator_stake:     u64,   // validator's own contribution
+    pub community_stake:     u64,   // sum of all non-validator stakers
+    pub stake_token_mint:    Pubkey, // USDC mint
+    pub staker_count:        u16,
+    pub bump:                u8,
 }
-// Token vault PDA: ["vault", fund_account.key()]
+
+// seeds: ["staker_position", fund_account.key(), staker.key()]
+pub struct StakerPosition {
+    pub fund_account:      Pubkey,
+    pub staker:            Pubkey,
+    pub amount_staked:     u64,
+    pub staked_at:         i64,
+    pub last_claim_epoch:  u64,     // 7-day epoch tracking
+    pub claimable_rewards: u64,
+    pub bump:              u8,
+}
 ```
 
-**Instructions:**
+**Why one StakerPosition PDA per staker?** Keeping all stakers inside `FundAccount` as a `Vec` would hit Solana account size limits as the community staker count grows. One PDA per staker is the standard Solana pattern — cheap to create, independently queryable, each staker claims rewards without touching anyone else's account.
 
-`stake(amount)` — transfers USDC from operator → vault PDA
+**Reward distribution** is proportional to stake, not hardcoded:
 
-`withdraw_stake(amount)` — only if no active challenges; transfers vault → operator
+```
+validator_share = (validator_stake / total_locked_stake) × total_rewards
+staker_share    = (staker.amount_staked / total_locked_stake) × total_rewards
+```
 
-`claim_rewards()` — transfers `claimable_rewards` → operator
+If the validator stakes 60 USDC and two community stakers contribute 10 and 30 USDC respectively, the 100 USDC total pool distributes rewards 60% / 10% / 30% automatically. No percentages are hardcoded — the math self-adjusts as stakers join or leave.
+
+**Key instructions:**
+
+`stake(amount)` — transfers USDC from operator → vault PDA, creates or updates StakerPosition
+
+`community_stake(amount)` — any user can stake into any agent's fund pool, creates their StakerPosition PDA
+
+`withdraw_stake(amount)` — only if no active challenges; proportional withdrawal
+
+`claim_rewards()` — transfers `claimable_rewards` from vault to staker wallet, resets epoch counter
 
 ---
 
 ### Program 3: `clu_adjudication`
 
-**Challenge PDA**
+Handles challenge filing and automatic slash execution. One **Challenge PDA** per challenge.
 
 ```rust
 // seeds: ["challenge", agent_id.key(), nonce.to_le_bytes()]
 pub enum FailureType {
-    MissedDeadline,       // L2: provable on-chain — auto-adjudicated
-    OutOfScopeCall,       // L2: provable on-chain — auto-adjudicated
-    SubstantiveFailure,   // L3: requires peer validation round
+    MissedDeadline,    // L2: provable on-chain — auto-adjudicated
+    OutOfScopeCall,    // L2: provable on-chain — auto-adjudicated
+    SubstantiveFailure // L3: peer validation round [post-hackathon]
 }
 
 pub struct Challenge {
     pub agent_id:     Pubkey,
+    pub task_id:      [u8; 32],   // must reference a real TaskRecord PDA
     pub challenger:   Pubkey,
     pub bond_amount:  u64,
     pub failure_type: FailureType,
@@ -589,110 +332,189 @@ pub struct Challenge {
 }
 ```
 
-**Validation Round PDA**
+**Also stores TaskRecord PDAs:**
 
 ```rust
-// seeds: ["validation_round", challenge.key()]
-pub struct ValidatorRecord {
-    pub validator:  Pubkey,
-    pub commitment: [u8; 32],    // hash(verdict || confidence || salt)
-    pub verdict:    Option<bool>,
-    pub confidence: Option<u8>,  // 0–100
-}
-
-pub struct ValidationRound {
-    pub challenge_id:      Pubkey,
-    pub task_output_cid:   String,
-    pub validators:        Vec<ValidatorRecord>, // max 21
-    pub commit_deadline:   i64,
-    pub reveal_deadline:   i64,
-    pub status:            RoundStatus,
-    pub winning_validator: Option<Pubkey>,
-    pub bump:              u8,
+// seeds: ["task", agent_id.key(), task_id.as_ref()]
+pub struct TaskRecord {
+    pub agent_id:        Pubkey,
+    pub task_id:         [u8; 32],
+    pub assigned_by:     Pubkey,   // user who registered the task
+    pub output_hash:     [u8; 32],
+    pub agent_signature: [u8; 64],
+    pub deadline:        i64,
+    pub completed_at:    Option<i64>,
+    pub status:          TaskStatus, // Pending | Completed | Slashed
+    pub bump:            u8,
 }
 ```
 
-**Instructions:**
+**Why does `file_challenge()` require a `task_id`?** Without a real TaskRecord, a challenger could file a `MissedDeadline` claim against an agent with no verifiable deadline to check. With TaskRecord, `auto_adjudicate()` can verify deadline and agent match deterministically — no subjective judgment required.
 
-`file_challenge(agent_id, failure_type, proof_data, bond_amount)`
-- Creates Challenge PDA, locks challenger bond in escrow
-- Minimum bond enforced by program constant — filters frivolous claims
+**Key instructions:**
 
-`auto_adjudicate(challenge_id)`
-- Only for `MissedDeadline` / `OutOfScopeCall`
-- Checks agent's `capability_hash` against `TemplateRegistry` PDA first
-- If known template → validates proof inline, no Arweave fetch
-- If custom manifest → requires Arweave CID in proof_data
-- Valid proof → `execute_slash()`; invalid → dismiss + return bond
+`register_task(agent_id, task_id, deadline)` — called by user when hiring an agent
 
-`execute_slash(agent_id, challenge_id)`
+`file_challenge(agent_id, task_id, failure_type, proof_data, bond_amount)` — creates Challenge PDA, locks challenger bond in escrow, minimum bond enforced by program constant
+
+`auto_adjudicate(challenge_id)` — only for `MissedDeadline` and `OutOfScopeCall`; checks TemplateRegistry for known template hash inline (no Arweave fetch for standard templates); valid proof triggers `execute_slash()`, invalid proof dismisses and returns bond
+
+`execute_slash(agent_id, challenge_id)` — the slash mechanic:
 - 60% of `locked_stake` → challenger wallet
 - 40% → CLU treasury PDA
-- `reputation_score = reputation_score * 35 / 100`
-- `slash_count += 1` (permanent)
-- Emits: `AgentSlashed { agent_id, slash_count, new_reputation }`
-
-`open_validation_round(challenge_id, task_output_cid)`
-- Creates ValidationRound PDA
-- `commit_deadline = now + 86400` (24h)
-- `reveal_deadline = commit_deadline + 43200` (12h)
-
-`commit_verdict(round_id, commitment: [u8; 32])`
-- Validator posts `sha256(verdict || confidence || salt)`
-- Must have minimum `validator_stake` and `reputation_score`
-
-`reveal_verdict(round_id, verdict: bool, confidence: u8, salt: [u8; 32])`
-- Verifies commitment, stores actual verdict
-
-`finalize_round(round_id)`
-- Counts majority verdict
-- Winning validator = majority side member with highest confidence
-- Minority validators lose `validator_stake`
-- Grants winning validator write access to update Arweave CID
+- `reputation_score = reputation_score × 35 / 100`
+- `slash_count += 1` (permanent, never decrements)
+- Emits `AgentSlashed` event
+- Off-chain listener uploads reputation snapshot to Arweave, anchors CID on-chain
 
 ---
 
-## 10. Attestation: Two Paths
+## 7. The Two-Pool System
 
-Requiring every hiring protocol to integrate `submit_attestation()` is high friction — extra dev work, transaction fees, responsibility for judging output quality. CLU solves this with two parallel attestation paths.
+Every other agent registry conflates identity, reputation, and funds into a single account. CLU separates them into two distinct PDA types with different access patterns and lifecycles.
+
+| | Agent Registry Pool | Agentic Fund Pool |
+|---|---|---|
+| Maps | `agent_id → ReputationRecord` | `(operator, agent_id) → FundAccount` |
+| Type | One PDA per agent | One PDA per (operator, agent) pair |
+| Access pattern | Read-heavy — queried constantly by external protocols | Write-heavy — touched during stake, slash, rewards |
+| Key fields | `reputation_score`, `capability_hash`, `slash_count`, `arweave_cid` | `total_locked_stake`, `validator_stake`, `community_stake` |
+| Who writes | CLU program after attestation or slash | Operator (deposit/withdraw), CLU program (slash/rewards) |
+
+**Why split them?** Reputation reads and fund writes have fundamentally different access patterns. Separating them eliminates account contention. Multiple stakers can also back a single agent without touching its identity record. A community staker's `StakerPosition` PDA is entirely their own — creating it, claiming from it, and closing it does not require the operator's signature.
+
+**Multi-party staking model:**
+
+```
+Validator stakes 60 USDC    → Fund PDA total: 60
+User A stakes 10 USDC       → Fund PDA total: 70  (StakerPosition PDA created for User A)
+User B stakes 30 USDC       → Fund PDA total: 100 (StakerPosition PDA created for User B)
+
+Slash hits total_locked_stake = 100 USDC
+  → 60 USDC (60%) to challenger
+  → 40 USDC (40%) to CLU treasury
+  → All StakerPosition balances reduced proportionally
+
+Rewards distribute every 7 days
+  → Validator: 60% of reward pool
+  → User A:    10% of reward pool
+  → User B:    30% of reward pool
+```
+
+The validator always earns the dominant share because they staked the most, not because of a special rule. The proportional math self-adjusts automatically.
+
+---
+
+## 8. Task Lifecycle and Execution Receipts
+
+### The TaskRecord
+
+Before an agent can be challenged, a `TaskRecord` must exist on-chain. This is registered by the user (trader) when they hire an agent:
+
+```
+User pays subscription fee
+     │
+     ├── Gas allocation → agent wallet (covers tx fees)
+     ├── Fund pool share → distributed to stakers/validators
+     └── CLU platform fee → protocol treasury
+
+register_task(agent_id, task_id, deadline) → TaskRecord PDA
+```
+
+The `TaskRecord` is the ground truth for challenge resolution. `auto_adjudicate()` checks it directly — no off-chain data, no oracle, no human judgment.
+
+### The Execution Receipt
+
+When an agent completes a task, it constructs and signs an execution receipt. This is the agent's explicit accountability statement.
+
+```json
+{
+  "schema_version": "1.0",
+  "task_id": "7f3a9c...",
+  "agent_id": "AgentPubkeyBase58...",
+  "operator": "OperatorPubkeyBase58...",
+  "assigned_by": "TraderPubkeyBase58...",
+  "timestamp_unix": 1743724800,
+
+  "execution": {
+    "tx_signatures": ["5Kj8xVmN3...", "9xQeWvG81..."],
+    "programs_called": [
+      "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+    ],
+    "instructions_executed": ["swap", "route_swap"],
+    "token_transfers": [
+      { "mint": "EPjFWdd5...", "amount": 1000000, "direction": "out" },
+      { "mint": "So111111...", "amount": 5230000, "direction": "in" }
+    ]
+  },
+
+  "result": {
+    "status": "success",
+    "summary": "Swapped 1 USDC for 0.00523 SOL at 191.2 USDC/SOL"
+  }
+}
+```
+
+```
+output_hash     = sha256(canonical JSON above, keys sorted alphabetically)
+agent_signature = sign(output_hash, agent_private_key)
+```
+
+**Why `output_hash` cannot be replaced by the Solana tx signature:**
+
+| Gap | Why tx signature doesn't cover it |
+|---|---|
+| Multi-transaction tasks | One task often spans 3–10 txs — which one represents the task? |
+| Explicit responsibility | Agent signing output_hash is a deliberate accountability act, not a side effect |
+| Off-chain tasks | A data-labeling agent produces no Solana txs — output_hash is the only record |
+| Capability verification | The receipt's `programs_called` maps directly to the capability manifest |
+
+### Independent Verifiability
+
+Anyone can verify an output_hash claim in five steps:
+
+1. Retrieve receipt from Arweave using `arweave_cid` from Registry PDA
+2. `sha256(receipt_json) == output_hash` on Registry PDA → receipt is authentic
+3. `ed25519_verify(agent_signature, output_hash, agent_pubkey)` → agent signed it
+4. Look up `tx_signatures` on Solana RPC → did these transactions actually happen?
+5. `programs_called` in receipt match actual tx instructions → agent reported honestly
+
+A challenger walks all five steps to build a slash proof. A DeFi protocol walks steps 1–4 to trust an agent's work history.
+
+---
+
+## 9. Attestation
 
 ### Path 1 — Auto-Attestation (Primary Path)
 
-CLU runs an off-chain watcher that monitors Solana transactions. When it detects an agent completing a verifiable action, it generates an attestation automatically. No hiring protocol integration required.
+CLU runs an off-chain watcher that monitors all three CLU programs via Solana websocket. When it detects an agent completing a verifiable action, it generates and submits an attestation automatically. No hiring protocol integration required.
 
 ```
-Agent executes a Jupiter swap
-
-CLU watcher detects on-chain:
+Agent executes Jupiter swap → watcher detects on-chain:
   - agent_pubkey signed the transaction
   - programs_called ⊆ allowed_programs in capability manifest
   - transaction succeeded
   - output_hash signed by agent keypair
 
-CLU watcher calls submit_attestation():
-  - score: derived from objective execution quality
-  - stake_weight: agent's current locked_stake
-  - no hiring protocol involvement
+Watcher calls submit_attestation():
+  - score derived from objective execution quality
+  - stake_weight = agent's current locked_stake
 ```
 
 **Auto-score derivation:**
 
 | Outcome | Score |
 |---|---|
-| Task completed, all programs within allowlist | 85 |
+| Completed, all programs within allowlist | 85 |
 | Completed, within slippage tolerance | 90 |
 | Completed, exceeded slippage but within manifest limits | 65 |
 | Completed before deadline | +10 bonus |
-| Hiring protocol submitted additional quality score | Weighted average |
 
 ### Path 2 — Protocol Attestation (Quality Layer)
 
-For subjective outcomes that cannot be derived from transaction data alone, the hiring protocol submits a quality score. This is optional and layers on top of auto-attestation.
-
-The hiring protocol does not need to modify their on-chain program. They call a CLU API endpoint from their backend:
+For subjective outcomes, a hiring protocol submits a quality score from their backend:
 
 ```typescript
-// Hiring protocol backend — no Solana program changes needed
 await clu.attest({
   agentId: "AgentPubkey...",
   taskId: "task_123",
@@ -700,142 +522,109 @@ await clu.attest({
   agentSignature: "base64sig...",
   score: 85,
   stakeWeight: 5000,
-  signerKeypair: hiringProtocolKeypair  // they sign, CLU submits on-chain
+  signerKeypair: hiringProtocolKeypair
 });
 ```
 
-CLU validates their signature and submits the on-chain transaction. CLU covers the transaction fee, recovering it via x402 registry access revenue.
+CLU validates their signature, submits the on-chain transaction, and covers the gas (recovered via x402 API revenue). No Solana program changes required on the protocol's side.
 
-### The verify_agent() Flywheel
+### The `verify_agent()` Flywheel
 
-Once `verify_agent()` becomes a standard that DeFi protocols call before trusting agents with their pools, hiring protocols gain a direct incentive to submit attestations. Better-attested agents build higher reputation and keep getting work. Attestation becomes self-interested — no evangelism needed.
-
----
-
-## 11. Core Protocol Flows
-
-### Registration
-
-```
-1. Operator constructs registration transaction
-2. Both operator keypair AND agent keypair sign it      ← dual signature
-3. Solana runtime rejects if either signature missing
-4. Registry PDA created — identity immutable from this point
-5. Fund PDA created — operator can now stake
-6. AgentRegistered event emitted
-```
-
-### Normal Operation (Reputation Building)
-
-```
-Agent executes task across 1–N Solana transactions
-     │
-     ▼
-Agent constructs execution receipt JSON
-output_hash = sha256(receipt_json, sorted keys)
-agent_signature = sign(output_hash, agent_private_key)
-     │
-     ▼
-CLU auto-attestation watcher detects completed task on-chain
-calls submit_attestation(agent_id, task_id, output_hash, agent_signature, score, stake_weight)
-     │
-     ▼
-Program verifies ed25519 signature on-chain
-reputation_score += (stake_weight * score) / max_stake
-     │
-     ▼
-AttestationSubmitted event emitted
-Receipt stored on Arweave, CID anchored on-chain
-```
-
-### Slash Flow (L2 — Automatic)
-
-```
-Agent misses deadline or makes out-of-scope call
-     │
-     ▼
-Challenger posts bond + proof → file_challenge()
-     │
-     ▼
-auto_adjudicate():
-  checks TemplateRegistry for known template hash
-  validates proof inline (no Arweave fetch for standard templates)
-     │
-     ├── Invalid proof → dismiss, return bond
-     │
-     └── Valid proof → execute_slash()
-              ├── 60% locked_stake → challenger
-              ├── 40% → treasury
-              ├── reputation_score × 0.35
-              └── slash_count += 1 (permanent)
-                       │
-                       ▼
-              AgentSlashed event emitted
-              Off-chain listener uploads snapshot to Arweave
-              write_arweave_cid() anchors CID on-chain
-```
-
-### Composability (External Protocol Checking an Agent)
-
-```rust
-// Inside any Solana program — one CPI call
-let (trusted, record) = cpi::verify_agent(
-    agent_id,
-    min_reputation: 5000,
-    min_stake: 10_000_000,  // 10 USDC
-)?;
-
-if trusted {
-    // grant pool access, execute trade, etc.
-} else {
-    return Err(ProtocolError::AgentNotTrusted);
-}
-```
+Once `verify_agent()` becomes standard for DeFi protocols, hiring protocols gain a direct incentive to submit quality attestations — better-attested agents score higher, get more work, and attract more community stakers. Attestation becomes economically self-interested. No evangelism needed.
 
 ---
 
-## 12. The Peer-Validation Consensus Layer
+## 10. The Slashing System
 
-For subjective failures that cannot be proven automatically on-chain, CLU uses peer validation: competing registered agents stake their own USDC on their verdict and compete for the right to write the reputation update.
-
-**Economic equilibrium:**
-- Voting with the losing minority costs `validator_stake`
-- Voting with the winning majority earns nothing but avoids a loss
-- Only the winning validator with the highest confidence earns a positive reward
-
-The rational strategy is always honest evaluation. Collusion doesn't pay — honest validators outvote colluders, and colluders lose their stake.
-
-**Sybil resistance:** A validator must have a registered CLU identity with minimum `validator_stake` and `reputation_score`. Cheap new accounts cannot flood a validation round.
-
-**Hackathon scope:** Simplified verdict submission. Full commit-reveal if ahead of schedule. The architecture matters for judges, not the cryptographic detail.
-
----
-
-## 13. The Slashing System
+### Failure Types
 
 | Failure type | Examples | How adjudicated |
 |---|---|---|
 | Objective / provable | Missed deadline, out-of-scope program call, transfer over limit | L2: Auto on-chain — no humans |
-| Subjective / qualitative | Output delivered but wrong, adversarial behavior | L3: Staked peer validation round |
-| Genuinely disputed | L3 verdict contested | L4: DAO governance — not in hackathon scope |
+| Subjective / qualitative | Output delivered but wrong, adversarial behavior | L3: Peer validation [post-launch] |
 
-**Slash economics:**
+### L2 Auto-Adjudication — The Core Mechanic
 
-| Recipient | Share | Rationale |
-|---|---|---|
-| Challenger | 60% of `locked_stake` | Reward accurate claims, fund enforcement ecosystem |
-| CLU treasury | 40% of `locked_stake` | Fund panelist rewards, DAO operations, protocol development |
-| Challenger bond | Returned in full | Bond was only to filter frivolous claims |
+For `MissedDeadline` and `OutOfScopeCall`, `auto_adjudicate()` resolves entirely on-chain:
 
-**Reputation impact:** `reputation_score = reputation_score * 35 / 100` per slash.
-- One slash: 100% → 35%
-- Two slashes: 100% → 35% → ~12%
+```rust
+pub fn auto_adjudicate(ctx: Context<AutoAdjudicate>, challenge_id: Pubkey) -> Result<()> {
+    let challenge = &ctx.accounts.challenge;
+    let task = &ctx.accounts.task_record;
+    let agent = &ctx.accounts.registry_pda;
 
-`slash_count` is permanent. It can never be decremented — not by the operator, not by CLU, not by anyone.
+    // Verify task_id matches and agent matches
+    require!(task.agent_id == challenge.agent_id, CluError::TaskAgentMismatch);
+
+    match challenge.failure_type {
+        FailureType::MissedDeadline => {
+            // Did the agent complete after the deadline?
+            require!(
+                task.completed_at.is_none() ||
+                task.completed_at.unwrap() > task.deadline,
+                CluError::DeadlineNotActuallyMissed
+            );
+        },
+        FailureType::OutOfScopeCall => {
+            // Did programs_called contain something not in capability_hash?
+            // Check TemplateRegistry first — no Arweave fetch for standard templates
+            if let Some(template) = template_registry.get(&agent.capability_hash) {
+                verify_against_template(&challenge.proof_data, template)?;
+            } else {
+                verify_against_custom_manifest(&challenge.proof_data)?;
+            }
+        },
+        _ => return Err(CluError::RequiresPeerValidation)
+    }
+
+    execute_slash(ctx)?;
+    Ok(())
+}
+```
+
+**No human can interfere with this.** Once a valid proof is submitted and `auto_adjudicate()` is called, the slash is irreversible and immediate.
+
+### Slash Economics
+
+```
+On valid proof:
+  60% of locked_stake  →  challenger wallet      (reward enforcement)
+  40% of locked_stake  →  CLU treasury PDA       (protocol sustainability)
+  
+  reputation_score  =  reputation_score × 35 / 100
+  slash_count      +=  1  (permanent, never decrements)
+
+On invalid proof:
+  challenger bond   →  returned in full (bond only filters spam)
+  agent             →  unaffected
+```
+
+**Reputation decay per slash:**
+
+```
+One slash:   100% → 35%
+Two slashes: 100% → 35% → ~12%
+Three:       100% → 35% → 12% → ~4%
+```
+
+A triple-slashed agent is effectively blacklisted from any DeFi protocol using reasonable `min_reputation` thresholds.
+
+### Challenge UX — One Button
+
+The challenge flow for a trader is entirely abstracted. On the task panel, each completed task shows a single "Challenge" button. Clicking it:
+
+1. Detects the `task_id` from context (no user input required)
+2. Prompts for bond confirmation (5–10 USDC default)
+3. Calls `file_challenge()` on-chain
+4. Card status changes: `Completed → Challenged → Resolved: Slashed / Dismissed`
+
+For L2 failures, resolution happens in under one Solana slot (~400ms). The card updates automatically.
+
+**Bond sizing rationale.** The bond must filter spam without chilling legitimate challenges. A reasonable default is ~2% of the agent's staked value. For a 500 USDC staked agent, a 10 USDC bond is appropriate. This can be made governance-adjustable post-launch.
 
 ---
 
-## 14. x402-Gated Registry Access
+## 11. x402-Gated Registry API
 
 External protocols querying CLU's registry pay via x402 — the HTTP-native micropayment protocol settling on Solana. A free registry has no revenue model, no spam filter, and no signal on data value.
 
@@ -848,74 +637,192 @@ External protocols querying CLU's registry pay via x402 — the HTTP-native micr
 | `GET /agents/:id/history` — full Arweave history | 0.01 USDC/minute |
 
 **Payment flow:**
-1. Client sends request with no payment header
-2. Server returns `402` + `{ amount: "0.001", token: "USDC", network: "solana-devnet" }`
-3. Client sends USDC tx on Solana, retries with `X-Payment` header
-4. Server verifies tx on-chain → serves data. End-to-end under 500ms.
 
-**What is always free:** Raw Solana PDA data is public. Anyone running their own RPC node can read it for free. The x402 gate applies only to the indexed, structured API layer.
+```
+Client sends request with no payment header
+     ↓
+Server returns 402 + { amount: "0.001", token: "USDC", network: "solana-devnet" }
+     ↓
+Client sends USDC tx on Solana, retries with X-Payment header
+     ↓
+Server verifies tx on-chain → serves data
+Total round-trip: < 500ms
+```
+
+**What is always free:** Raw Solana PDA data is public. Anyone running their own RPC node can read Registry and Fund PDAs directly at no cost. The x402 gate applies only to the indexed, structured API layer — not to the on-chain truth itself.
+
+This means `verify_agent()` CPI calls (the composability primitive) are always free. The x402 gate is for discovery and bulk lookup, not for runtime trust checks.
 
 ---
 
-## 15. Arweave Storage Integration
+## 12. Arweave Storage Integration
 
-Full reputation history is too large and too permanent for Solana accounts. CLU stores the Arweave transaction ID on-chain — the chain stores the pointer, Arweave stores the data permanently.
-
-**Trigger events:** `AgentSlashed` or `RoundFinalized`
-
-**Write flow:**
-
-```
-Off-chain listener catches event
-     ▼
-Serialize full ReputationRecord + event history to JSON
-     ▼
-Upload to Arweave via arweave-js → get txid
-     ▼
-Call write_arweave_cid(agent_id, txid) on-chain
-     ▼
-Registry PDA now contains pointer to permanent history
-```
+Full reputation history is too large and too permanent for Solana accounts. CLU stores the Arweave transaction ID on-chain — the chain stores the pointer, Arweave stores the data permanently and immutably.
 
 **What lives where:**
 
 | Data | Storage | Why |
 |---|---|---|
-| `reputation_score`, `slash_count`, `arweave_cid` | Solana on-chain | Must be composable — `verify_agent()` reads it via CPI |
-| `locked_stake`, balances | Solana on-chain (Fund PDA) | All token transfers must be atomic and trustless |
-| Full reputation history + validation verdicts | Arweave | Too large for Solana accounts. Permanent, cannot be deleted |
-| Link between chain and storage | `arweave_cid` in Registry PDA | Anyone can reconstruct full agent audit history from on-chain data |
+| `reputation_score`, `slash_count`, `arweave_cid` | Solana on-chain | Must be composable — `verify_agent()` reads via CPI |
+| `locked_stake`, balances | Solana on-chain (Fund PDA) | Token transfers must be atomic and trustless |
+| Full reputation history, slash snapshots | Arweave | Too large for Solana. Permanent. Cannot be deleted by anyone. |
+| Link between chain and storage | `arweave_cid` in Registry PDA | Full audit trail reconstructable from on-chain data alone |
 
-**Note on Codex/Logos:** Codex paused its testnet in August 2025. Arweave is the storage layer for the hackathon. The `arweave_cid` field is storage-layer-agnostic — switching to Codex in production requires only swapping the storage SDK, not any on-chain program changes.
+**Write flow (triggered by `AgentSlashed` or `RoundFinalized` event):**
+
+```
+Off-chain listener catches event
+     ↓
+Serialize full ReputationRecord + event history to JSON
+     ↓
+Upload to Arweave via arweave-js → get txid
+     ↓
+Call write_arweave_cid(agent_id, txid) on-chain
+     ↓
+Registry PDA now contains pointer to permanent history
+```
+
+The `arweave_cid` field is storage-layer-agnostic. Switching storage providers post-launch requires only swapping the upload SDK — no on-chain program changes.
 
 ---
 
-## 16. Off-Chain Components
+## 13. User Journeys
+
+### Journey A: Operator / Developer
+
+```
+1. npx skills add clu-protocol/skills
+        └── installs 6 CLU skills into Claude Code
+
+2. "Set up CLU for my trading agent"
+        └── clu-register skill activates
+        └── Claude Code asks: keypair, capability templates, stake amount
+        └── Generates registration transaction
+        └── Dual-sig tx fires (operator + agent co-sign)
+        └── Registry PDA + Fund PDA created on-chain
+
+3. "Build a Jupiter trading agent"
+        └── clu-wrap-jupiter skill activates
+        └── Claude Code generates code with withCluGuard + withCluReceipt wrappers
+        └── Agent is pre-instrumented before first transaction
+
+4. Deploy agent
+        └── Auto-attestation watcher picks up every tx automatically
+        └── reputation_score climbs with each successful task
+
+5. Check dashboard
+        └── View reputation history, task queue, staker positions
+        └── Claim 7-day epoch rewards
+```
+
+### Journey B: Trader / User
+
+```
+1. Browse agent explorer
+        └── Filter by min reputation score, total staked, capability type
+        └── See real on-chain history — not marketing copy
+
+2. Pay subscription
+        └── Fee splits: gas allocation → fund pool → CLU platform fee
+
+3. Register task
+        └── TaskRecord PDA created on-chain with deadline
+
+4. Agent executes task from queue
+        └── Signs output_hash on completion
+        └── Receipt uploaded to Arweave
+
+5. Review completed task card
+        └── Status: Completed / Pending / Failed
+
+6a. Satisfied → done, agent reputation rises
+
+6b. Unsatisfied → click "Challenge"
+        └── Bond deducted from wallet
+        └── file_challenge() fires with task_id pre-filled
+        └── auto_adjudicate() resolves in < 1 Solana slot
+        └── Card shows: Resolved: Slashed or Resolved: Dismissed
+```
+
+### Journey C: Community Staker
+
+```
+1. Browse agent explorer
+        └── Find agent with strong reputation + validator stake
+
+2. View agent profile
+        └── See: reputation history, total staked, validator's stake amount
+        └── See: task success rate, slash count (permanent)
+
+3. Stake USDC
+        └── StakerPosition PDA created for staker
+        └── total_locked_stake increases
+
+4. Earn rewards every 7 days
+        └── Proportional to (my_stake / total_locked_stake)
+        └── Claim at any time from StakerPosition PDA
+
+5. Exit at any time
+        └── No active challenge → withdraw full position
+        └── Active challenge → position locked until resolution
+```
+
+### Journey D: DeFi Protocol
+
+```
+1. Add one CPI call to existing program:
+
+   let (trusted, record) = cpi::verify_agent(
+       agent_id,
+       min_reputation: 5000,   // 50.00%
+       min_stake: 10_000_000,  // 10 USDC
+   )?;
+
+   if trusted { /* grant access */ } else { return Err(AgentNotTrusted) }
+
+2. That's it.
+   No frontend changes. No CLU account required. No integration fee.
+   The trust signal comes from the on-chain record CLU has been building
+   since the agent registered.
+```
+
+---
+
+## 14. Off-Chain Components
+
+### Auto-Attestation Watcher (TypeScript)
+
+Monitors all three CLU programs via Solana websocket subscription. On detecting a completed agent task transaction, it:
+
+1. Verifies `programs_called ⊆ allowed_programs` from capability manifest
+2. Derives an objective score from execution quality metrics
+3. Calls `submit_attestation()` on-chain automatically
+4. Uploads execution receipt to Arweave, triggers `write_arweave_cid()`
+
+The watcher is CLU-team-operated at hackathon stage. Long-term: decentralized watcher network where external parties run nodes and earn bounties for accurate attestations.
 
 ### x402 API Server (Node.js / TypeScript)
 
 ```
-GET  /agents/:id          → single ReputationRecord   (0.001 USDC)
-GET  /agents/batch        → up to 100 records         (0.05 USDC)
-GET  /agents/:id/history  → full Arweave history      (0.01 USDC/min)
+GET /agents/:id          → single ReputationRecord   (0.001 USDC)
+GET /agents/batch        → up to 100 records         (0.05  USDC)
+GET /agents/:id/history  → full Arweave history      (0.01  USDC/min)
 ```
 
-### Auto-Attestation Watcher (TypeScript)
-
-Monitors all three CLU programs via Solana websocket. Detects completed agent task transactions. Derives objective attestation scores. Calls `submit_attestation()` automatically. No hiring protocol action required.
+All endpoints return a `402` with payment details if no valid `X-Payment` header is present. Payment verification happens on-chain before any data is served.
 
 ### Indexer (TypeScript)
 
-Parses emitted events from all three programs. Writes to SQLite (hackathon) / PostgreSQL (production). Powers x402 API with fast indexed reads.
+Subscribes to all three CLU program event streams. Parses `AgentRegistered`, `AttestationSubmitted`, `AgentSlashed` events. Writes to SQLite (hackathon) → PostgreSQL (production). Powers the x402 API with fast indexed reads rather than RPC calls.
 
 ### CLI (TypeScript)
 
 ```bash
 clu register   --agent-id <pubkey> --capability-hash <hex>
 clu stake      --agent-id <pubkey> --amount <usdc>
-clu attest     --agent-id <pubkey> --task-id <id> --score <0-100> --output-hash <hex> --agent-sig <base64>
+clu attest     --agent-id <pubkey> --task-id <id> --score <0-100>
 clu verify     --agent-id <pubkey> --min-rep <score> --min-stake <usdc>
-clu challenge  --agent-id <pubkey> --type missed-deadline --proof <base64>
+clu challenge  --agent-id <pubkey> --type missed-deadline --task-id <id>
 clu history    --agent-id <pubkey>
 ```
 
@@ -923,12 +830,123 @@ clu history    --agent-id <pubkey>
 
 | Page | What it shows |
 |---|---|
-| Operator Dashboard | Register agent (template drag-and-drop), stake/unstake USDC, reputation score + history chart |
-| Agent Explorer | Browse all agents, filter by min reputation/stake, link to Arweave history |
-| Challenge Interface | File challenge, upload proof, post bond, view dispute status |
-| Validator Interface | Open validation rounds, commit/reveal UI, personal stake + rewards |
+| Agent Explorer | Browse all agents, filter by reputation/stake/capability, link to Arweave history |
+| Operator Dashboard | Registration flow, stake/unstake, task queue, reputation chart, claim rewards |
+| Task Panel | Per-agent queue of tasks, status cards, one-click challenge button |
+| Staker View | Browse agents, stake USDC, view StakerPosition, claim epoch rewards |
 
-### Tech Stack
+---
+
+## 15. Capability Templates
+
+Instead of operators writing capability manifests from scratch, CLU ships a library of standard templates. The `clu-register` skill presents these as options during onboarding.
+
+**Standard templates:**
+
+| Template | What it unlocks | Key constraints |
+|---|---|---|
+| `DEX_TRADER_V1` | Jupiter, Orca, Raydium swaps | max_single_transfer_usdc: 50000 |
+| `LP_MANAGER_V1` | Add/remove liquidity on major Solana AMMs | Whitelisted pool programs only |
+| `ORACLE_READER_V1` | Pyth + Switchboard price feeds | Read-only, zero write instructions |
+| `TOKEN_TRANSFER_V1` | USDC/SOL transfers | Bounded amount, address whitelist |
+| `YIELD_OPTIMIZER_V1` | Kamino, Drift vault deposit/withdraw | No borrow instructions |
+
+**How templates enable faster auto-adjudication:**
+
+Each standard template hash is pre-registered on-chain in a `TemplateRegistry` PDA at protocol deployment. When `auto_adjudicate()` processes an `OutOfScopeCall` challenge, it checks whether the agent's `capability_hash` matches a known template:
+
+```rust
+if let Some(template) = template_registry.get(&agent.capability_hash) {
+    // Known template — validate proof inline, no Arweave fetch needed
+    verify_against_template(proof_data, template)
+} else {
+    // Custom manifest — require Arweave CID in proof_data
+    verify_against_custom_manifest(proof_data)
+}
+```
+
+Standard template agents resolve `OutOfScopeCall` slashes entirely on-chain in a single transaction. Most agents will use standard templates, so most objective slashes resolve with no off-chain dependency.
+
+---
+
+## 16. Token Decision
+
+**There is no $CLU token in this build.**
+
+All stakes, bonds, slashes, and rewards flow in USDC. This removes an entire layer of complexity from the hackathon build. A $CLU governance and rewards token is a post-mainnet decision — distributed via governance vote after the protocol has demonstrated sustained activity. No judge penalizes this choice; most will appreciate the honesty.
+
+---
+
+## 17. Known Open Problems
+
+**Cold start.** A registry with no agents has no network effects. Mitigation: seed 3–5 live agents with real stake and task history before the hackathon demo. The operator/developer path via skills is the growth engine — every developer building a DeFi agent with CLU skills installed is a potential registered agent.
+
+**Watcher centralization.** The auto-attestation watcher is off-chain and CLU-team-operated. Long-term fix is a permissionless watcher network with bounty incentives. Acceptable at hackathon stage.
+
+**Bond calibration.** Challenge bond must balance spam prevention against chilling legitimate challenges. Starting at 5–10 USDC with governance-adjustable parameters post-launch is the right approach.
+
+**Task queue flooding.** One subscription fee should not unlock unlimited task registrations. The correct model is a per-task micro-fee (0.5–1 USDC per `register_task()` call) so that the fee split into gas/pool/treasury happens on every task. This also makes the fund pool revenue stream more predictable.
+
+**Gas top-up fragility.** An agent that runs out of SOL mid-task will stall and potentially trigger a `MissedDeadline` slash unfairly. Mitigation: enforce a minimum agent wallet balance check at `register_task()` time, before the task enters the queue.
+
+**Peer validation complexity.** `SubstantiveFailure` challenges — where output is delivered but wrong — require a peer validation mechanism to adjudicate fairly. This is intentionally excluded from the hackathon build. The L2 auto-adjudication mechanic is the novel and demo-able part. L3 validation is described in the architecture and deferred to post-launch.
+
+---
+
+## 18. Build Plan
+
+### Pre-hackathon
+- Anchor workspace initialized, devnet wallets funded
+- Program IDs reserved on devnet
+- Standard template manifests written and uploaded to Arweave
+- `TemplateRegistry` PDA seeded with standard template hashes
+- Demo script written (exact CLI commands for full scenario)
+
+### Week 1 — Core identity and composability
+- `clu_registry`: `register_agent()` (dual signature), `submit_attestation()` (ed25519 verify), `verify_agent()`
+- `clu_fund`: `stake()`, `withdraw_stake()`, `StakerPosition` PDA
+- Dummy DeFi program calling `verify_agent()` via CPI — build this week
+- `clu-register` SKILL.md — first draft
+- Goal: registration + staking + CPI verify all work on devnet
+
+### Week 2 — Slashing and payments
+- `clu_adjudication`: `register_task()`, `file_challenge()`, `auto_adjudicate()` (template-aware), `execute_slash()`
+- x402 API server: single agent lookup with payment gate
+- Arweave write triggered by slash event, CID anchored on-chain
+- Auto-attestation watcher v1 — basic tx monitoring
+- Goal: full slash flow runs on devnet
+
+### Week 3 — Skills and frontend
+- All six SKILL.md files finalized with examples/
+- `clu-wrap-jupiter` skill with working code examples
+- Indexer subscribing to all three programs
+- Frontend: Agent Explorer + Operator Dashboard + Task Panel
+
+### Week 4 — Integration and polish
+- Community staking (`community_stake()`, proportional rewards)
+- `demo.sh` — full seven-step scenario with zero manual input
+- CLI complete and tested against devnet
+- All edge cases handled
+
+### Week 5 — Submission
+- 3-minute pitch video
+- Written submission materials
+- Protocol outreach: 3–5 Solana DeFi teams for `verify_agent()` integration
+- Submission to `solana.com/skills` community directory
+
+### Team allocation
+
+| Role | Owns |
+|---|---|
+| Rust dev 1 | `clu_registry` + `clu_fund` + `TemplateRegistry` programs |
+| Rust dev 2 | `clu_adjudication` + dummy CPI demo program |
+| TS dev | x402 API + indexer + Arweave + auto-attestation watcher + CLI |
+| Frontend dev | Next.js dashboard (starts week 3) |
+| Product | SKILL.md files, demo script, documentation, submission materials |
+
+---
+
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -938,6 +956,7 @@ clu history    --agent-id <pubkey>
 | Token transfers | `@solana/spl-token` (USDC) |
 | x402 payments | `x402` npm package |
 | Off-chain storage | Arweave via `arweave-js` |
+| Skills | SKILL.md format (Anthropic Agent Skills specification) |
 | API server | Node.js + Express |
 | Database | SQLite → PostgreSQL |
 | Frontend | Next.js |
@@ -945,157 +964,10 @@ clu history    --agent-id <pubkey>
 
 ---
 
-## 17. Full Deployment Map
+## The One-Sentence Pitch
 
-| Component | Deployment | Reason |
-|---|---|---|
-| Agent Registry Pool — `agentId → ReputationRecord` PDA | Solana on-chain | Must be composable — external programs call `verify_agent()` via CPI |
-| Agentic Fund Pool — `(operator, agentId) → FundAccount` PDA | Solana on-chain | All token transfers must be atomic and trustless |
-| Template Registry — standard capability template hashes | Solana on-chain | Enables inline OutOfScopeCall validation without Arweave fetch |
-| Adjudication Engine — slash + validation logic | Solana on-chain | Objective slash proofs verified by program with no human in the loop |
-| Reputation History — snapshots + validation records | Arweave | Too large for Solana accounts. Permanent. CIDs anchored on-chain |
-| Registry API — indexed, structured interface | Off-chain server + x402 gate | Raw PDA data is public but unstructured. API indexes and gates access |
-| Auto-Attestation Watcher | Off-chain service | Monitors on-chain agent activity, generates objective attestations automatically |
-| Agent execution | Operator's own infrastructure | CLU only cares about the on-chain record of agent outputs |
+> **CLU is the accountability skill the Solana agent ecosystem didn't know it was missing — every DeFi skill teaches an agent how to interact with a protocol, CLU is the skill that makes that agent answerable for what it does.**
 
 ---
 
-## 18. Token Decision
-
-**There is no $CLU token in the hackathon build.**
-
-All stakes, bonds, slashes, and rewards flow in USDC. $CLU becomes a post-launch governance and reward token — distributed via governance vote after mainnet. This removes an entire complexity layer. No judge will penalize this decision.
-
----
-
-## 19. Open Problems
-
-**Subjective failure adjudication**
-L3 panel selects experts by reputation score — but a top DeFi agent isn't qualified to judge a data labeling task. Long-term fix: category-specific panels based on task history.
-
-**Validator collusion risk**
-A coordinated group could drain honest minority validators over time. Mitigation: reputation-weighted consensus makes collusion expensive, entry barriers limit new colluder accounts.
-
-**Cold start**
-A registry with no agents has no network effects. Initial deployment needs seeded agents and at least one live integrating protocol from day one.
-
-**Micro-task reputation farming**
-Flooding the registry with trivial successful tasks before attempting high-value work. Mitigation: stake-weighted task scoring — reputation points scale with stake at risk.
-
-**Compute limits for large validation rounds**
-Current design: maximum 21 validators per round. Larger rounds require off-chain computation with on-chain proof submission.
-
-**Auto-attestation watcher trust**
-The watcher is off-chain and controlled by CLU team. Long-term fix: decentralised watcher network where external parties run watchers and earn bounties for submitting accurate attestations.
-
----
-
-## 20. Hackathon Demo Scenario
-
-Every component serves this single demo. If this runs cleanly end-to-end, the submission wins.
-
-```
-Step 1 — Agent A registers
-  Operator selects DEX_TRADER_V1 template in UI
-  capability_hash = sha256(DEX_TRADER_V1_manifest)
-  Both operator + agent sign registration transaction
-  clu stake --agent-id <A_pubkey> --amount 5000
-  ✓ Registry PDA created, Fund PDA created, 5000 USDC locked
-
-Step 2 — Agent A completes tasks, builds reputation
-  Agent executes 3 swaps, signs each output_hash
-  CLU auto-attestation watcher submits attestations automatically
-  ✓ reputation_score rises to 7200
-
-Step 3 — Agent B registers and fails
-  clu register --agent-id <B_pubkey> --capability-hash <hash>
-  clu stake    --agent-id <B_pubkey> --amount 2000
-  Agent B misses a deadline
-  ✓ Registry PDA + Fund PDA created
-
-Step 4 — Challenger files claim
-  clu challenge --agent-id <B_pubkey> --type missed-deadline --proof <base64>
-  ✓ Challenge PDA created, bond locked
-
-Step 5 — Auto-adjudication fires
-  auto_adjudicate() verifies proof against known template inline — no Arweave fetch
-  execute_slash() runs:
-    → 1,200 USDC (60%) to challenger
-    → 800 USDC (40%) to treasury
-    → reputation_score: 5000 → 1750
-    → slash_count: 0 → 1 (permanent)
-  ✓ AgentSlashed event emitted
-
-Step 6 — Arweave snapshot written
-  Off-chain listener catches AgentSlashed
-  Serializes ReputationRecord to JSON, uploads to Arweave
-  write_arweave_cid() anchors CID on Registry PDA
-  ✓ Permanent history record created, cannot be deleted by anyone
-
-Step 7 — External DeFi program calls verify_agent()
-  verify_agent(A_pubkey, min_reputation: 5000, min_stake: 3000) → TRUE  ✓
-  verify_agent(B_pubkey, min_reputation: 5000, min_stake: 3000) → FALSE ✗
-
-  DeFi protocol grants Agent A pool access.
-  DeFi protocol denies Agent B.
-  No central authority made this decision. The on-chain record did.
-```
-
----
-
-## 21. Build Plan
-
-### Pre-hackathon (April 3–5)
-- Anchor workspace initialized, repo structured, devnet wallets funded
-- Program IDs reserved on devnet
-- Standard template manifests written and uploaded to Arweave
-- TemplateRegistry PDA seeded with standard template hashes
-- Demo script written (exact CLI commands for steps 1–7 above)
-- Dependencies pinned: Anchor, SPL token, x402, arweave-js
-
-### Week 1 (April 6–12) — Core Identity & Composability
-- `clu_registry`: `register_agent` (dual signature), `submit_attestation` (ed25519 verify), `verify_agent`
-- `clu_fund`: `stake`, `withdraw_stake`
-- `TemplateRegistry` PDA with standard template hashes
-- **Dummy DeFi program calling `verify_agent()` via CPI** — build this week
-- Goal: steps 1–2 of demo scenario run cleanly
-
-### Week 2 (April 13–19) — Slashing & Payments
-- `clu_adjudication`: `file_challenge`, `auto_adjudicate` (template-aware), `execute_slash`
-- x402 API server: single agent lookup with payment gate
-- Arweave write triggered by slash event, CID anchored on-chain
-- Auto-attestation watcher v1
-- Goal: steps 3–6 of demo scenario run cleanly
-
-### Week 3 (April 20–26) — Validation Round & Frontend
-- Validation round (simplified verdict submission)
-- Indexer subscribing to all three programs
-- Batch API endpoint
-- Frontend: Operator Dashboard with template drag-and-drop
-
-### Week 4 (April 27 – May 3) — Polish & Integration
-- Full demo scenario runs without manual intervention
-- CLI complete and tested
-- Frontend: Agent Explorer page
-- All edge cases handled
-
-### Week 5 (May 4–11) — Submission
-- 3-minute pitch video
-- Written submission materials
-- Protocol outreach — 3–5 Solana DeFi teams
-- Buffer for bugs — no new features this week
-
-### Team Allocation
-
-| Role | Owns |
-|---|---|
-| Rust dev 1 | `clu_registry` + `clu_fund` + `TemplateRegistry` programs |
-| Rust dev 2 | `clu_adjudication` + dummy CPI demo program |
-| TS dev | x402 API + indexer + Arweave + auto-attestation watcher |
-| Frontend dev | Next.js dashboard with template builder (starts week 3) |
-| Product | Demo script, user flows, documentation, submission materials |
-| BD | Protocol outreach, Codex/Logos contact |
-
----
-
-*CLU Technical Architecture · v0.3 · April 2026 · Hackathon build — Colosseum Frontier · All tokenomic parameters subject to governance finalization before mainnet.*
+*CLU Technical Architecture · v0.4 · April 2026 · Colosseum Frontier Hackathon · Peer validation (L3) intentionally excluded from this build — described in architecture, implemented post-launch.*
