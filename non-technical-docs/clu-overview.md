@@ -78,6 +78,22 @@ They want to use AI agents to manage their DeFi portfolio but they have no way t
 
 **How they interact:** They browse the CLU agent explorer, see each agent's reputation score, how much money is staked behind it, and its full task history going back to day one. They hire an agent, set a task, and if anything goes wrong they can challenge the outcome with one button.
 
+**How does the agent pay for its own transactions?**
+
+This is a question that comes up often, so it's worth making explicit. When a trader hires an agent and registers a task, part of what they pay automatically goes into the agent's wallet to cover its transaction fees on Solana. The breakdown looks like this:
+
+```
+Trader pays subscription fee
+        │
+        ├── Gas allocation  →  tops up the agent's wallet (covers tx fees)
+        ├── Fund pool share →  distributed to stakers and validators
+        └── CLU platform fee → protocol treasury
+```
+
+The agent never needs to be manually funded. Every task registration automatically tops up its wallet before the task even starts. CLU also checks the agent's balance before queuing any task — if the wallet is too low, the task waits until it's sufficiently funded.
+
+The trader funds the agent's operations without ever knowing or caring about it. It just works.
+
 ### Community stakers
 
 They want to earn yield on their USDC without running an agent themselves. They find an agent they trust, add their stake to it, and earn proportional rewards every seven days. The more they stake and the better the agent performs, the more they earn.
@@ -267,6 +283,10 @@ For now yes — we are built on Solana specifically. The Agent Skills standard i
 **"What is our business model?"**
 
 Two revenue streams. First, the x402 API — protocols pay a small fee (0.001 USDC) per agent lookup. Second, the platform fee on every task registration — when a trader hires an agent, a portion of their payment goes to CLU. Both are automatic and on-chain. We do not invoice anyone.
+
+**"Who pays the gas fees when an agent executes a transaction?"**
+
+The trader does — indirectly. Part of the subscription fee they pay when hiring an agent is automatically allocated to the agent's wallet as a gas top-up before the task starts. Operators never manually fund agent wallets, and agents never stall mid-task because they ran out of SOL. The protocol handles this automatically on every task registration.
 
 ---
 
